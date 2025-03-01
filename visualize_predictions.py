@@ -4,6 +4,7 @@ import torch
 import matplotlib.pyplot as plt
 from model import TimeSeriesForcasting
 from data_utils import load_lorenz_data
+from scipy.interpolate import interp1d
 
 if torch.backends.mps.is_available():
     device = "mps"  
@@ -77,6 +78,16 @@ def visualize_predictions(npy_path, model_checkpoint, history_size=15, horizon_s
     plt.tight_layout()
     plt.show()
 
+def smooth_curve(x, y, z, num_points=1000):
+    t = np.linspace(0, 1, len(x))
+    t_smooth = np.linspace(0, 1, num_points)
+
+    x_smooth = interp1d(t, x, kind='cubic')(t_smooth)
+    y_smooth = interp1d(t, y, kind='cubic')(t_smooth)
+    z_smooth = interp1d(t, z, kind='cubic')(t_smooth)
+
+    return x_smooth, y_smooth, z_smooth
+
 def visualize_lorenz_attractor(npy_path, model_checkpoint, history_size=15, horizon_size=3, num_samples=2000):
     """
     Visualizes the Lorenz attractor for Transformer predictions vs. Ground Truth.
@@ -130,7 +141,10 @@ def visualize_lorenz_attractor(npy_path, model_checkpoint, history_size=15, hori
 
     ax.plot(x_true, y_true, z_true, label="Ground Truth", color="blue", alpha=0.6)
 
-    ax.plot(x_pred, y_pred, z_pred, label="Prediction", color="red", linestyle="dashed", alpha=0.8)
+    x_pred_smooth, y_pred_smooth, z_pred_smooth = smooth_curve(x_pred, y_pred, z_pred)
+    ax.plot(x_pred_smooth, y_pred_smooth, z_pred_smooth, label="Prediction", color="red", alpha=0.8)
+
+    # ax.plot(x_pred, y_pred, z_pred, label="Prediction", color="red", alpha=0.8)
 
     ax.set_title("Lorenz Attractor: Transformer Prediction vs Ground Truth")
     ax.set_xlabel("X")
