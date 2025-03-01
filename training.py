@@ -1,69 +1,65 @@
 import json
-import numpy as np
-import pytorch_lightning as pl
 import torch
+import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
-# from time_series_forecasting.model import TimeSeriesForcasting
+from torch.utils.data import DataLoader
+
 from model import TimeSeriesForcasting
+from data_utils import load_lorenz_data
 
-from data_utils import split_np_array, get_dataloader  # Import Lorenz Data Processing Functions
-
+# Determine the computing device
 if torch.backends.mps.is_available():
-    device = "mps"  # Use Metal (Apple M1/M2/M3)
+    device = "mps"  
 elif torch.cuda.is_available():
-    device = "cuda"  # Use CUDA (Linux/Windows)
+    device = "cuda"  
 else:
-    device = "cpu"  # Default to CPU
+    device = "cpu"
 
 def train(
-    data_path: str,
-    output_json_path: str = None,
+    npy_path: str,
+    output_json_path: str,
     log_dir: str = "ts_logs",
     model_dir: str = "ts_models",
     batch_size: int = 32,
-    epochs: int = 2000,
-    input_len: int = 120,
-    pred_len: int = 30,
+    epochs: int = 100,
+    history_size: int = 15,  # Encoder input: 15 time steps
+    horizon_size: int = 3,   # Decoder input: 3 time steps, predicting 3 time steps
 ):
     """
-    Train the Transformer model on Lorenz-63 or Lorenz-96 data using explicit sliding window preprocessing.
+    Train the Transformer model for Lorenz trajectory forecasting.
+
+    :param npy_path: Path to the `.npy` dataset file.
+    :param output_json_path: Path to save the training output JSON file.
+    :param log_dir: Directory to store training logs.
+    :param model_dir: Directory to save the trained model.
+    :param batch_size: Batch size for training.
+    :param epochs: Number of training epochs.
+    :param history_size: Number of past time steps used as input (N).
+    :param horizon_size: Number of future time steps to predict (M).
     """
 
-    # Load raw data
-    raw_data = np.load(data_path)
+    train_loader = load_lorenz_data(npy_path, history_size, horizon_size, batch_size=batch_size, shuffle=True)
+    val_loader = load_lorenz_data(npy_path, history_size, horizon_size, batch_size=batch_size, shuffle=False)
 
-    # Use `split_np_array()` to generate input-output pairs
-    history, targets = split_np_array(raw_data, split="train", history_size=input_len, horizon_size=pred_len)
-    print(f"History Shape: {history.shape}, Targets Shape: {targets.shape}")
+    print(f"Training samples: {len(train_loader.dataset)}")
+    print(f"Validation samples: {len(val_loader.dataset)}")
 
-    # Create DataLoader
-    train_loader = get_dataloader(history, targets, batch_size=batch_size, device=device)
-    val_loader = get_dataloader(history, targets, batch_size=batch_size, shuffle=False, device=device)
+    model = TimeSeriesForcasting()
 
-    # Initialize the Transformer model
-    model = TimeSeriesForcasting(
-        n_encoder_inputs=3 if "lorenz63" in data_path else 20,  
-        n_decoder_inputs=3 if "lorenz63" in data_path else 20,
-        lr=1e-5,
-        dropout=0.1,
-    ).to(device)  
-
-    # Set up logging
     logger = TensorBoardLogger(save_dir=log_dir)
 
-    # Checkpoint callback to save the best model
     checkpoint_callback = ModelCheckpoint(
         monitor="valid_loss",
         mode="min",
         dirpath=model_dir,
-        filename="lorenz_transformer",
+        filename="ts",
     )
 
-    # Initialize Trainer
     trainer = pl.Trainer(
         max_epochs=epochs,
-        accelerator=device,  # 自动选择 CPU/MPS/GPU
+        devices=1,
+        accelerator=device,
         logger=logger,
         callbacks=[checkpoint_callback],
     )
@@ -71,28 +67,37 @@ def train(
     # Train the model
     trainer.fit(model, train_loader, val_loader)
 
+    # Evaluate the model on validation set
+    result_val = trainer.test(test_dataloaders=val_loader)
+
+    # Save the best model path and validation loss
+    output_json = {
+        "val_loss": result_val[0]["test_loss"],
+        "best_model_path": checkpoint_callback.best_model_path,
+    }
+
+    if output_json_path is not None:
+        with open(output_json_path, "w") as f:
+            json.dump(output_json, f, indent=4)
+
+    return output_json
+
+
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_path", required=True, help="Path to Lorenz dataset (.npy)")
-    parser.add_argument("--output_json_path", default=None, help="Path to save training results")
-    parser.add_argument("--log_dir", default="ts_logs", help="Directory for TensorBoard logs")
-    parser.add_argument("--model_dir", default="ts_models", help="Directory for saving model checkpoints")
-    parser.add_argument("--epochs", type=int, default=2000, help="Number of training epochs")
-    parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
-    parser.add_argument("--input_len", type=int, default=120, help="Number of encoder input time steps")
-    parser.add_argument("--pred_len", type=int, default=30, help="Number of decoder output time steps")
-    
+    parser.add_argument("--npy_path")  
+    parser.add_argument("--output_json_path", default=None)
+    parser.add_argument("--log_dir")
+    parser.add_argument("--model_dir")
+    parser.add_argument("--epochs", type=int, default=100)
     args = parser.parse_args()
 
     train(
-        data_path=args.data_path,
+        npy_path=args.npy_path,
         output_json_path=args.output_json_path,
         log_dir=args.log_dir,
         model_dir=args.model_dir,
         epochs=args.epochs,
-        batch_size=args.batch_size,
-        input_len=args.input_len,
-        pred_len=args.pred_len,
     )

@@ -2,6 +2,7 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 from torch.nn import Linear
+import numpy as np
 
 
 def smape_loss(y_pred, target):
@@ -24,8 +25,6 @@ def gen_trg_mask(length, device):
 class TimeSeriesForcasting(pl.LightningModule):
     def __init__(
         self,
-        n_encoder_inputs,
-        n_decoder_inputs,
         channels=512,
         dropout=0.1,
         lr=1e-4,
@@ -36,6 +35,9 @@ class TimeSeriesForcasting(pl.LightningModule):
 
         self.lr = lr
         self.dropout = dropout
+
+        self.n_encoder_inputs = 3  # X, Y, Z
+        self.n_decoder_inputs = 3  # X, Y, Z
 
         self.input_pos_embedding = torch.nn.Embedding(1024, embedding_dim=channels)
         self.target_pos_embedding = torch.nn.Embedding(1024, embedding_dim=channels)
@@ -53,11 +55,11 @@ class TimeSeriesForcasting(pl.LightningModule):
             dim_feedforward=4 * channels,
         )
 
-        self.encoder = torch.nn.TransformerEncoder(encoder_layer, num_layers=8)
-        self.decoder = torch.nn.TransformerDecoder(decoder_layer, num_layers=8)
+        self.encoder = torch.nn.TransformerEncoder(encoder_layer, num_layers=4)
+        self.decoder = torch.nn.TransformerDecoder(decoder_layer, num_layers=4)
 
-        self.input_projection = Linear(n_encoder_inputs, channels)
-        self.output_projection = Linear(n_decoder_inputs, channels)
+        self.input_projection = Linear(self.n_encoder_inputs, channels)
+        self.output_projection = Linear(self.n_decoder_inputs, channels)
 
         self.linear = Linear(channels,3)
 
@@ -70,7 +72,7 @@ class TimeSeriesForcasting(pl.LightningModule):
         pos_encoder = (
             torch.arange(0, in_sequence_len, device=src.device)
             .unsqueeze(0)
-            .repeat(batch_size, 1)
+            .repeat(batch_size, 1) 
         )
 
         pos_encoder = self.input_pos_embedding(pos_encoder).permute(1, 0, 2)
@@ -80,6 +82,7 @@ class TimeSeriesForcasting(pl.LightningModule):
         src = self.encoder(src) + src_start
 
         return src
+
 
     def decode_trg(self, trg, memory):
 
@@ -171,7 +174,6 @@ class TimeSeriesForcasting(pl.LightningModule):
             "lr_scheduler": scheduler,
             "monitor": "valid_loss",
         }
-
 
 if __name__ == "__main__":
     n_classes = 100
