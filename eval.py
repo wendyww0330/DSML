@@ -1,184 +1,98 @@
 import json
-from typing import Optional
 import numpy as np
-import pandas as pd
 import torch
-from sklearn.metrics import mean_absolute_error
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 from tqdm import tqdm
+from psd import power_spectrum_error  
+from model import TimeSeriesForcasting
+from data_utils import load_lorenz_data
 
-from time_series_forecasting.model import TimeSeriesForcasting
-from time_series_forecasting.training import split_df, Dataset
-
+if torch.backends.mps.is_available():
+    device = "mps"  
+elif torch.cuda.is_available():
+    device = "cuda"  
+else:
+    device = "cpu"
 
 def smape(true, pred):
     """
     Symmetric mean absolute percentage error
-    :param true:
-    :param pred:
-    :return:
     """
-    true = np.array(true)
-    pred = np.array(pred)
+    true, pred = np.array(true), np.array(pred)
+    return 100 / len(pred) * np.sum(2 * np.abs(true - pred) / (np.abs(pred) + np.abs(true) + 1e-8))
 
-    smape_val = (
-        100
-        / pred.size
-        * np.sum(2 * (np.abs(true - pred)) / (np.abs(pred) + np.abs(true) + 1e-8))
-    )
-
-    return smape_val
-
-
-def evaluate_regression(true, pred):
+def evaluate_model(npy_path, model_checkpoint, eval_json_path, history_size=15, horizon_size=3):
     """
-    eval mae + smape
-    :param true:
-    :param pred:
-    :return:
+    Evaluates the trained Transformer model on Lorenz data.
+    
+    :param npy_path: Path to the test npy dataset
+    :param model_checkpoint: Path to the trained model checkpoint
+    :param eval_json_path: Path to save evaluation results
+    :param history_size: Number of past time steps (N)
+    :param horizon_size: Number of future time steps (M)
     """
+    test_loader = load_lorenz_data(npy_path, history_size, horizon_size, batch_size=1, shuffle=False)
 
-    return {"smape": smape(true, pred), "mae": mean_absolute_error(true, pred)}
-
-
-def evaluate(
-    data_csv_path: str,
-    feature_target_names_path: str,
-    trained_json_path: str,
-    eval_json_path: str,
-    horizon_size: int = 30,
-    data_for_visualization_path: Optional[str] = None,
-):
-    """
-    Evaluates the model on the last 8 labeled weeks of the data.
-    Compares the model to a simple baseline : prediction the last known value
-    :param data_csv_path:
-    :param feature_target_names_path:
-    :param trained_json_path:
-    :param eval_json_path:
-    :param horizon_size:
-    :param data_for_visualization_path:
-    :return:
-    """
-    data = pd.read_csv(data_csv_path)
-
-    with open(trained_json_path) as f:
-        model_json = json.load(f)
-
-    model_path = model_json["best_model_path"]
-
-    with open(feature_target_names_path) as f:
-        feature_target_names = json.load(f)
-
-    target = feature_target_names["target"]
-
-    data_train = data[~data[target].isna()]
-
-    grp_by_train = data_train.groupby(by=feature_target_names["group_by_key"])
-
-    groups = list(grp_by_train.groups)
-
-    full_groups = [
-        grp for grp in groups if grp_by_train.get_group(grp).shape[0] > horizon_size
-    ]
-
-    val_data = Dataset(
-        groups=full_groups,
-        grp_by=grp_by_train,
-        split="val",
-        features=feature_target_names["features"],
-        target=feature_target_names["target"],
-    )
-
-    model = TimeSeriesForcasting(
-        n_encoder_inputs=len(feature_target_names["features"]) + 1,
-        n_decoder_inputs=len(feature_target_names["features"]) + 1,
-        lr=1e-4,
-        dropout=0.5,
-    )
-    model.load_state_dict(torch.load(model_path)["state_dict"])
-
+    model = TimeSeriesForcasting()
+    model.load_state_dict(torch.load(model_checkpoint, map_location=device)["state_dict"])
+    model.to(device)
     model.eval()
 
-    gt = []
-    baseline_last_known_values = []
-    neural_predictions = []
+    gt, predictions = [], []
 
-    data_for_visualization = []
+    with torch.no_grad():
+        for src, trg_in, trg_out in tqdm(test_loader, desc="Evaluating Model"):
+            src, trg_in = src.to(device), trg_in.to(device)
 
-    for i, group in tqdm(enumerate(full_groups[:100])):
-        time_series_data = {"history": [], "ground_truth": [], "prediction": []}
+            pred = model((src, trg_in[:, :1, :]))
 
-        df = grp_by_train.get_group(group)
-        src, trg = split_df(df, split="val")
-
-        time_series_data["history"] = src[target].tolist()[-120:]
-        time_series_data["ground_truth"] = trg[target].tolist()
-
-        last_known_value = src[target].values[-1]
-
-        trg["last_known_value"] = last_known_value
-
-        gt += trg[target].tolist()
-        baseline_last_known_values += trg["last_known_value"].tolist()
-
-        src, trg_in, _ = val_data[i]
-
-        src, trg_in = src.unsqueeze(0), trg_in.unsqueeze(0)
-
-        with torch.no_grad():
-            prediction = model((src, trg_in[:, :1, :]))
             for j in range(1, horizon_size):
-                last_prediction = prediction[0, -1]
-                trg_in[:, j, -1] = last_prediction
-                prediction = model((src, trg_in[:, : (j + 1), :]))
+                last_pred = pred[:, -1, :]
+                last_pred = last_pred.unsqueeze(0)  
+                trg_in[:, j, :] = last_pred  
+                pred = model((src, trg_in[:, : (j + 1), :]))
 
-            trg[target + "_predicted"] = (prediction.squeeze().numpy()).tolist()
+            pred = pred.squeeze().cpu().numpy()
+            trg_out = trg_out.squeeze().cpu().numpy()
 
-            neural_predictions += trg[target + "_predicted"].tolist()
+            predictions.append(pred)
+            gt.append(trg_out)
 
-            time_series_data["prediction"] = trg[target + "_predicted"].tolist()
+    gt = np.array(gt)
+    predictions = np.array(predictions)
 
-        data_for_visualization.append(time_series_data)
+    mse = mean_squared_error(gt.flatten(), predictions.flatten())
+    mae = mean_absolute_error(gt.flatten(), predictions.flatten())
+    smape_val = smape(gt.flatten(), predictions.flatten())
 
-    baseline_eval = evaluate_regression(gt, baseline_last_known_values)
-    model_eval = evaluate_regression(gt, neural_predictions)
+    psd_error = power_spectrum_error(predictions, gt)
 
     eval_dict = {
-        "Baseline_MAE": baseline_eval["mae"],
-        "Baseline_SMAPE": baseline_eval["smape"],
-        "Model_MAE": model_eval["mae"],
-        "Model_SMAPE": model_eval["smape"],
+        "MSE": mse,
+        "MAE": mae,
+        "sMAPE": smape_val,
+        "Power Spectrum Error": psd_error
     }
 
-    if eval_json_path is not None:
-        with open(eval_json_path, "w") as f:
-            json.dump(eval_dict, f, indent=4)
-
-    if data_for_visualization_path is not None:
-        with open(data_for_visualization_path, "w") as f:
-            json.dump(data_for_visualization, f, indent=4)
+    with open(eval_json_path, "w") as f:
+        json.dump(eval_dict, f, indent=4)
 
     for k, v in eval_dict.items():
-        print(k, v)
+        print(f"{k}: {v:.4f}")
 
     return eval_dict
-
 
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_csv_path")
-    parser.add_argument("--feature_target_names_path")
-    parser.add_argument("--trained_json_path")
-    parser.add_argument("--eval_json_path", default=None)
-    parser.add_argument("--data_for_visualization_path", default=None)
+    parser.add_argument("--npy_path", required=True, help="Path to the test npy file")
+    parser.add_argument("--model_checkpoint", required=True, help="Path to the trained model checkpoint")
+    parser.add_argument("--eval_json_path", required=True, help="Path to save evaluation results")
     args = parser.parse_args()
 
-    evaluate(
-        data_csv_path=args.data_csv_path,
-        feature_target_names_path=args.feature_target_names_path,
-        trained_json_path=args.trained_json_path,
-        eval_json_path=args.eval_json_path,
-        data_for_visualization_path=args.data_for_visualization_path,
+    evaluate_model(
+        npy_path=args.npy_path,
+        model_checkpoint=args.model_checkpoint,
+        eval_json_path=args.eval_json_path
     )
