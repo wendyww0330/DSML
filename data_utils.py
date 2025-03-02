@@ -26,7 +26,7 @@ class LorenzDataset(Dataset):
             torch.tensor(trg_out, dtype=torch.float32),
         )
 
-def load_lorenz_data(npy_path, history_size=10, horizon_size=5, batch_size=32, shuffle=False):
+def load_lorenz_data(npy_path, history_size=15, horizon_size=5, batch_size=32, shuffle=False):
     dataset = LorenzDataset(npy_path, history_size, horizon_size)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
     

@@ -31,7 +31,10 @@ def evaluate_model(npy_path, model_checkpoint, eval_json_path, history_size=15, 
     :param history_size: Number of past time steps (N)
     :param horizon_size: Number of future time steps (M)
     """
-    test_loader = load_lorenz_data(npy_path, history_size, horizon_size, batch_size=1, shuffle=False)
+    test_loader = load_lorenz_data(npy_path, history_size, horizon_size, batch_size=32, shuffle=False)
+
+    subset_size = 5000
+    test_loader = list(test_loader)[:subset_size]
 
     model = TimeSeriesForcasting()
     model.load_state_dict(torch.load(model_checkpoint, map_location=device)["state_dict"])
@@ -68,11 +71,12 @@ def evaluate_model(npy_path, model_checkpoint, eval_json_path, history_size=15, 
     psd_error = power_spectrum_error(predictions, gt)
 
     eval_dict = {
-        "MSE": mse,
-        "MAE": mae,
-        "sMAPE": smape_val,
-        "Power Spectrum Error": psd_error
+        "MSE": float(mse),
+        "MAE": float(mae),
+        "sMAPE": float(smape_val),
+        "Power Spectrum Error": float(psd_error)
     }
+
 
     with open(eval_json_path, "w") as f:
         json.dump(eval_dict, f, indent=4)
