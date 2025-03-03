@@ -4,6 +4,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 from torch.utils.data import DataLoader
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 from model import TimeSeriesForcasting
 from data_utils import load_lorenz_data
@@ -15,6 +16,16 @@ elif torch.cuda.is_available():
     device = "cuda"  
 else:
     device = "cpu"
+
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+
+# Add early stopping callback
+early_stopping = EarlyStopping(
+    monitor="valid_loss",  
+    patience=10,  
+    mode="min",  
+    verbose=True  
+)
 
 def train(
     npy_path: str,
@@ -61,7 +72,7 @@ def train(
         devices=1,
         accelerator=device,
         logger=logger,
-        callbacks=[checkpoint_callback],
+        callbacks=[checkpoint_callback, early_stopping],
     )
 
     # Train the model
