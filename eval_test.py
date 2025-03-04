@@ -20,7 +20,7 @@ def smape(true, pred):
     true, pred = np.array(true), np.array(pred)
     return 100 / len(pred) * np.sum(2 * np.abs(true - pred) / (np.abs(pred) + np.abs(true) + 1e-8))
 
-def evaluate_model(true_npy_path, pred_npy_path, eval_json_path):
+def evaluate_model(true_npy_path, pred_npy_path, eval_json_path, subset_size=None):
     """
     Evaluates the Transformer model predictions using precomputed trajectory.
 
@@ -30,10 +30,20 @@ def evaluate_model(true_npy_path, pred_npy_path, eval_json_path):
     """
     
     true_values = np.load(true_npy_path)  
-    predictions = np.load(pred_npy_path) 
+    predictions = np.load(pred_npy_path)
 
-    print(f"true_values shape: {true_values.shape}")
-    print(f"predictions shape: {predictions.shape}")
+    # print(f"true_values shape: {true_values.shape}")
+    # print(f"predictions shape: {predictions.shape}") 
+
+    if subset_size:
+        true_values = true_values[:subset_size]
+        predictions = predictions[:subset_size]
+
+    true_values = np.expand_dims(true_values, axis=0)  # (1, time_steps, features)
+    predictions = np.expand_dims(predictions, axis=0)  
+
+    # print(f"Expanded true_values shape: {true_values.shape}")
+    # print(f"Expanded predictions shape: {predictions.shape}")
 
     mse = mean_squared_error(true_values.flatten(), predictions.flatten())
     mae = mean_absolute_error(true_values.flatten(), predictions.flatten())
@@ -61,10 +71,12 @@ if __name__ == "__main__":
     parser.add_argument("--true_npy_path", required=True, help="Path to the ground truth npy file")
     parser.add_argument("--pred_npy_path", required=True, help="Path to the predicted trajectory npy file")
     parser.add_argument("--eval_json_path", required=True, help="Path to save evaluation results")
+    parser.add_argument("--subset_size", type=int, default=None, help="Number of samples to compare (default: all)")
     args = parser.parse_args()
 
     evaluate_model(
         true_npy_path=args.true_npy_path,
         pred_npy_path=args.pred_npy_path,
-        eval_json_path=args.eval_json_path
+        eval_json_path=args.eval_json_path,
+        subset_size=args.subset_size
     )
