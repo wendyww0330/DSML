@@ -31,7 +31,7 @@ def evaluate_model(npy_path, model_checkpoint, eval_json_path, history_size=15, 
     :param history_size: Number of past time steps (N)
     :param horizon_size: Number of future time steps (M)
     """
-    test_loader = load_lorenz_data(npy_path, history_size, horizon_size, batch_size=32, shuffle=False)
+    test_loader = load_lorenz_data(npy_path, history_size, horizon_size, batch_size=1, shuffle=False)
 
     subset_size = 5000
     test_loader = list(test_loader)[:subset_size]
