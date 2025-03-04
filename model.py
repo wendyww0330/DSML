@@ -25,6 +25,8 @@ def gen_trg_mask(length, device):
 class TimeSeriesForcasting(pl.LightningModule):
     def __init__(
         self,
+        input_dim,
+        output_dim=3,
         channels=512,
         dropout=0.1,
         lr=1e-4,
@@ -36,8 +38,8 @@ class TimeSeriesForcasting(pl.LightningModule):
         self.lr = lr
         self.dropout = dropout
 
-        self.n_encoder_inputs = 3  # X, Y, Z
-        self.n_decoder_inputs = 3  # X, Y, Z
+        self.n_encoder_inputs = input_dim  
+        self.n_decoder_inputs = input_dim
 
         self.input_pos_embedding = torch.nn.Embedding(1024, embedding_dim=channels)
         self.target_pos_embedding = torch.nn.Embedding(1024, embedding_dim=channels)
@@ -61,7 +63,7 @@ class TimeSeriesForcasting(pl.LightningModule):
         self.input_projection = Linear(self.n_encoder_inputs, channels)
         self.output_projection = Linear(self.n_decoder_inputs, channels)
 
-        self.linear = Linear(channels,3)
+        self.linear = Linear(channels,output_dim)
 
         self.do = nn.Dropout(p=self.dropout)
 
