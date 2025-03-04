@@ -30,24 +30,6 @@ class LorenzDataset(Dataset):
 def load_lorenz_data(npy_path, history_size=15, horizon_size=5, batch_size=32, shuffle=False):
     dataset = LorenzDataset(npy_path, history_size, horizon_size)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
-    input_dim = dataset.data.shape[-1]  
+    # input_dim = dataset.data.shape[-1]  
 
-    return dataloader, None, input_dim
-
-# def load_lorenz_data(npy_path, history_size=15, horizon_size=5, batch_size=32, shuffle=False):
-#     dataset = LorenzDataset(npy_path, history_size, horizon_size)
-    
-#     
-#     input_dim = dataset.data.shape[-1]  
-    
-#     
-#     dataset_size = len(dataset)
-#     train_size = int(0.8 * dataset_size)
-#     val_size = dataset_size - train_size
-
-#     train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
-
-#     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-#     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-
-#     return train_loader, val_loader, input_dim
+    return dataloader

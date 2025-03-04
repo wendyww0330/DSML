@@ -50,24 +50,17 @@ def train(
     :param horizon_size: Number of future time steps to predict (M).
     """
 
-    # train_loader, val_loader, input_dim = load_lorenz_data(npy_path, history_size, horizon_size, batch_size)
-    train_loader, val_loader, input_dim = load_lorenz_data(npy_path, history_size, horizon_size, batch_size)
-
-    # train_loader = load_lorenz_data(npy_path, history_size, horizon_size, batch_size=batch_size, shuffle=False)
-    # val_loader = load_lorenz_data(npy_path, history_size, horizon_size, batch_size=batch_size, shuffle=False)
-    # input_dim = load_lorenz_data(npy_path, history_size, horizon_size, batch_size, shuffle=False)
-
-    if isinstance(train_loader, tuple):
-        raise ValueError(f"train_loader should not be a tuple: {train_loader}")
+    train_loader = load_lorenz_data(npy_path, history_size, horizon_size, batch_size=batch_size, shuffle=False)
+    val_loader = load_lorenz_data(npy_path, history_size, horizon_size, batch_size=batch_size, shuffle=False)
 
     print(f"Training samples: {len(train_loader.dataset)}")
+    print(f"Validation samples: {len(val_loader.dataset)}")
 
-    if val_loader:
-        print(f"Validation samples: {len(val_loader.dataset)}")
+    # lorenz_96
+    model = TimeSeriesForcasting(input_dim=20, output_dim=20)
 
-    print(f"Input dimension: {input_dim}") 
-
-    model = TimeSeriesForcasting(input_dim=input_dim, output_dim=input_dim)
+    # lorenz_63
+    # model = TimeSeriesForcasting(input_dim=3, output_dim=3)
 
     logger = TensorBoardLogger(save_dir=log_dir)
 
