@@ -27,7 +27,7 @@ class LorenzDataset(Dataset):
             torch.tensor(trg_out, dtype=torch.float32),
         )
 
-def load_lorenz_data(npy_path, history_size=15, horizon_size=5, batch_size=32, shuffle=False, train_split=0.8):
+def load_lorenz_data(npy_path, history_size=15, horizon_size=3, batch_size=32, shuffle=False, train_split=0.8):
     """
     Loads Lorenz data and splits it into training and validation sets.
 

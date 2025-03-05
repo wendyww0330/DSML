@@ -51,10 +51,7 @@ def train(
     :param horizon_size: Number of future time steps to predict (M).
     """
 
-    # train_loader = load_lorenz_data(npy_path, history_size, horizon_size, batch_size=batch_size, shuffle=False)
-    # val_loader = load_lorenz_data(npy_path, history_size, horizon_size, batch_size=batch_size, shuffle=False)
-
-    train_loader, val_loader = load_lorenz_data(npy_path, history_size, horizon_size, batch_size=batch_size, shuffle=True)
+    train_loader, val_loader = load_lorenz_data(npy_path, history_size, horizon_size, batch_size=batch_size, shuffle=False)
 
     print(f"Training samples: {len(train_loader.dataset)}")
     print(f"Validation samples: {len(val_loader.dataset)}")
@@ -83,8 +80,7 @@ def train(
     )
 
     # Train the model
-    # trainer.fit(model, train_loader, val_loader)
-    trainer.fit(model, train_loader, val_loader, ckpt_path="models/ts.ckpt")
+    trainer.fit(model, train_loader, val_loader)
 
     # Evaluate the model on validation set
     result_val = trainer.test(model, dataloaders=val_loader)
