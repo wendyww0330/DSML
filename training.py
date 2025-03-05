@@ -22,7 +22,7 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 # Add early stopping callback
 early_stopping = EarlyStopping(
     monitor="valid_loss",  
-    patience=10,  
+    patience=15,  
     mode="min",  
     verbose=True  
 )
@@ -36,6 +36,7 @@ def train(
     epochs: int = 100,
     history_size: int = 15,  # Encoder input: 15 time steps
     horizon_size: int = 3,   # Decoder input: 3 time steps, predicting 3 time steps
+    ckpt_path: str = None,
 ):
     """
     Train the Transformer model for Lorenz trajectory forecasting.
@@ -50,17 +51,19 @@ def train(
     :param horizon_size: Number of future time steps to predict (M).
     """
 
-    train_loader = load_lorenz_data(npy_path, history_size, horizon_size, batch_size=batch_size, shuffle=False)
-    val_loader = load_lorenz_data(npy_path, history_size, horizon_size, batch_size=batch_size, shuffle=False)
+    # train_loader = load_lorenz_data(npy_path, history_size, horizon_size, batch_size=batch_size, shuffle=False)
+    # val_loader = load_lorenz_data(npy_path, history_size, horizon_size, batch_size=batch_size, shuffle=False)
+
+    train_loader, val_loader = load_lorenz_data(npy_path, history_size, horizon_size, batch_size=batch_size, shuffle=True)
 
     print(f"Training samples: {len(train_loader.dataset)}")
     print(f"Validation samples: {len(val_loader.dataset)}")
 
     # lorenz_96
-    model = TimeSeriesForcasting(input_dim=20, output_dim=20)
+    # model = TimeSeriesForcasting(input_dim=20, output_dim=20)
 
     # lorenz_63
-    # model = TimeSeriesForcasting(input_dim=3, output_dim=3)
+    model = TimeSeriesForcasting(input_dim=3, output_dim=3)
 
     logger = TensorBoardLogger(save_dir=log_dir)
 
@@ -80,10 +83,12 @@ def train(
     )
 
     # Train the model
-    trainer.fit(model, train_loader, val_loader)
+    # trainer.fit(model, train_loader, val_loader)
+    trainer.fit(model, train_loader, val_loader, ckpt_path="models/ts.ckpt")
 
     # Evaluate the model on validation set
-    result_val = trainer.test(test_dataloaders=val_loader)
+    result_val = trainer.test(model, dataloaders=val_loader)
+
 
     # Save the best model path and validation loss
     output_json = {
@@ -107,6 +112,7 @@ if __name__ == "__main__":
     parser.add_argument("--log_dir")
     parser.add_argument("--model_dir")
     parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--ckpt_path")
     args = parser.parse_args()
 
     train(
@@ -115,4 +121,5 @@ if __name__ == "__main__":
         log_dir=args.log_dir,
         model_dir=args.model_dir,
         epochs=args.epochs,
+        ckpt_path=args.ckpt_path
     )

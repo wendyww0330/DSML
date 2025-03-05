@@ -25,8 +25,8 @@ def gen_trg_mask(length, device):
 class TimeSeriesForcasting(pl.LightningModule):
     def __init__(
         self,
-        input_dim=20,
-        output_dim=3,
+        input_dim=20, # if training lorenz96:20; lorenz63:3
+        output_dim=20, # if training lorenz96:20; lorenz63:3
         channels=512,
         dropout=0.1,
         lr=1e-4,

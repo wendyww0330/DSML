@@ -4,8 +4,7 @@ import torch
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from tqdm import tqdm
 from psd import power_spectrum_error  
-from model import TimeSeriesForcasting
-from data_utils import load_lorenz_data
+import argparse
 
 if torch.backends.mps.is_available():
     device = "mps"  
@@ -21,54 +20,35 @@ def smape(true, pred):
     true, pred = np.array(true), np.array(pred)
     return 100 / len(pred) * np.sum(2 * np.abs(true - pred) / (np.abs(pred) + np.abs(true) + 1e-8))
 
-def evaluate_model(npy_path, model_checkpoint, eval_json_path, history_size=15, horizon_size=3):
+def evaluate_model(true_npy_path, pred_npy_path, eval_json_path, subset_size=None):
     """
-    Evaluates the trained Transformer model on Lorenz data.
+    Evaluates the Transformer model predictions using precomputed trajectory.
+
+    :param true_npy_path: Path to ground truth test dataset.
+    :param pred_npy_path: Path to the precomputed Transformer predictions.
+    :param eval_json_path: Path to save evaluation results.
+    """
     
-    :param npy_path: Path to the test npy dataset
-    :param model_checkpoint: Path to the trained model checkpoint
-    :param eval_json_path: Path to save evaluation results
-    :param history_size: Number of past time steps (N)
-    :param horizon_size: Number of future time steps (M)
-    """
-    test_loader = load_lorenz_data(npy_path, history_size, horizon_size, batch_size=1, shuffle=False)
+    true_values = np.load(true_npy_path)  
+    predictions = np.load(pred_npy_path)
 
-    subset_size = 5000
-    test_loader = list(test_loader)[:subset_size]
+    # print(f"true_values shape: {true_values.shape}")
+    # print(f"predictions shape: {predictions.shape}") 
 
-    model = TimeSeriesForcasting()
-    model.load_state_dict(torch.load(model_checkpoint, map_location=device)["state_dict"])
-    model.to(device)
-    model.eval()
+    if subset_size:
+        true_values = true_values[:subset_size]
+        predictions = predictions[:subset_size]
 
-    gt, predictions = [], []
+    true_values = np.expand_dims(true_values, axis=0)  # (1, time_steps, features)
+    predictions = np.expand_dims(predictions, axis=0)  
 
-    with torch.no_grad():
-        for src, trg_in, trg_out in tqdm(test_loader, desc="Evaluating Model"):
-            src, trg_in = src.to(device), trg_in.to(device)
+    # print(f"Expanded true_values shape: {true_values.shape}")
+    # print(f"Expanded predictions shape: {predictions.shape}")
 
-            pred = model((src, trg_in[:, :1, :]))
-
-            for j in range(1, horizon_size):
-                last_pred = pred[:, -1, :]
-                last_pred = last_pred.unsqueeze(0)  
-                trg_in[:, j, :] = last_pred  
-                pred = model((src, trg_in[:, : (j + 1), :]))
-
-            pred = pred.squeeze().cpu().numpy()
-            trg_out = trg_out.squeeze().cpu().numpy()
-
-            predictions.append(pred)
-            gt.append(trg_out)
-
-    gt = np.array(gt)
-    predictions = np.array(predictions)
-
-    mse = mean_squared_error(gt.flatten(), predictions.flatten())
-    mae = mean_absolute_error(gt.flatten(), predictions.flatten())
-    smape_val = smape(gt.flatten(), predictions.flatten())
-
-    psd_error = power_spectrum_error(predictions, gt)
+    mse = mean_squared_error(true_values.flatten(), predictions.flatten())
+    mae = mean_absolute_error(true_values.flatten(), predictions.flatten())
+    smape_val = smape(true_values.flatten(), predictions.flatten())
+    psd_error = power_spectrum_error(predictions, true_values)
 
     eval_dict = {
         "MSE": float(mse),
@@ -87,16 +67,16 @@ def evaluate_model(npy_path, model_checkpoint, eval_json_path, history_size=15, 
     return eval_dict
 
 if __name__ == "__main__":
-    import argparse
-
     parser = argparse.ArgumentParser()
-    parser.add_argument("--npy_path", required=True, help="Path to the test npy file")
-    parser.add_argument("--model_checkpoint", required=True, help="Path to the trained model checkpoint")
+    parser.add_argument("--true_npy_path", required=True, help="Path to the ground truth npy file")
+    parser.add_argument("--pred_npy_path", required=True, help="Path to the predicted trajectory npy file")
     parser.add_argument("--eval_json_path", required=True, help="Path to save evaluation results")
+    parser.add_argument("--subset_size", type=int, default=None, help="Number of samples to compare (default: all)")
     args = parser.parse_args()
 
     evaluate_model(
-        npy_path=args.npy_path,
-        model_checkpoint=args.model_checkpoint,
-        eval_json_path=args.eval_json_path
+        true_npy_path=args.true_npy_path,
+        pred_npy_path=args.pred_npy_path,
+        eval_json_path=args.eval_json_path,
+        subset_size=args.subset_size
     )
